@@ -8,6 +8,12 @@ public class Health : MonoBehaviour
     [SerializeField] float iFrames = 1f;   // seconds nothing can hurt you after a hit
     public bool shielded;                  // Lecture 07's shield: a bool TakeDamage checks
 
+    // Lecture 09: Health announces what happened and does not know who is listening.
+    // Listeners subscribe in OnEnable and unsubscribe in OnDisable (HealthBar, HitFlash, DamageSfx, HitSparks, CameraShake).
+    public event System.Action<int, int> Damaged;   // (current, max) after a hit that landed
+    public event System.Action<int, int> Healed;    // (current, max) after a heal or a respawn
+    public event System.Action Died;
+
     int current;
     float invulnerableUntil;
     Renderer[] renderers;
@@ -37,8 +43,13 @@ public class Health : MonoBehaviour
         }
 
         current -= amount;
+        Damaged?.Invoke(current, max);
         Refresh();
-        if (current <= 0 && GameManager.Instance != null) GameManager.Instance.PlayerDied();   // <= 0: a hit of 2 can skip 0
+        if (current <= 0)                                                                       // <= 0: a hit of 2 can skip 0
+        {
+            Died?.Invoke();
+            if (GameManager.Instance != null) GameManager.Instance.PlayerDied();
+        }
         return true;
     }
 
@@ -47,6 +58,7 @@ public class Health : MonoBehaviour
     {
         current = max;
         invulnerableUntil = Time.time + protectionSeconds;
+        Healed?.Invoke(current, max);
         Refresh();
     }
 

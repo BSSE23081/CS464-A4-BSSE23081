@@ -159,3 +159,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Coin
   value: 1
   spin: 140
+  pickupEffect: {fileID: 3550622521221672382, guid: 0d3c5388e59873e429eb8e9459c79fd4, type: 3}
