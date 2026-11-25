@@ -163,7 +163,7 @@ public static partial class CS464Builder
             go.AddComponent<EnemyGuard>();
             // 3D sound 1: a hum you can hear coming. Logarithmic (-6 dB per doubling), full volume inside 2 m, cut at 16 m
             // (the guard notices you at 5 to 7 m and gives up at 8 to 10 m, so you hear it before it hears you).
-            AddWorldSound(go, "loop_guard_hum", 0, 2f, 16f, 0.8f);
+            AddWorldSound(go, "loop_guard_hum", 0, 2f, 16f, 0.5f);
             Prim(PrimitiveType.Capsule, "Body", go.transform, Vector3.zero, new Vector3(1.1f, 1f, 1.1f), guard, false);
             Prim(PrimitiveType.Cube, "Eyes", go.transform, new Vector3(0f, 0.45f, 0.5f), new Vector3(0.7f, 0.18f, 0.2f), guardEye, false);
             SavePrefab(go, "Guard");
@@ -193,7 +193,6 @@ public static partial class CS464Builder
             h.restTime = 2.4f;
             h.warnTime = 0.7f;
             h.strikeTime = 0.4f;
-            AddWorldSound(go, "loop_hazard_buzz", 0, 2f, 12f, 0.6f);   // 3D sound 3: you hear a crusher before you see its warning
             Prim(PrimitiveType.Cube, "Base", go.transform, new Vector3(0f, 0.06f, 0f), new Vector3(4f, 0.12f, 3f), crusherBase, false);
             GameObject w = Prim(PrimitiveType.Cube, "Warning", go.transform, new Vector3(0f, 0.09f, 0f), new Vector3(3.8f, 0.14f, 2.8f), warning, false);
             GameObject s = Prim(PrimitiveType.Cube, "Slab", go.transform, new Vector3(0f, 0.7f, 0f), new Vector3(4f, 1.4f, 3f), slab, false);

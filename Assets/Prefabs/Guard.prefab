@@ -145,7 +145,7 @@ AudioSource:
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 8300000, guid: 9b9ce9603dd36ca4297e162f3ce85d52, type: 3}
   m_PlayOnAwake: 1
-  m_Volume: 0.8
+  m_Volume: 0.5
   m_Pitch: 1
   Loop: 1
   Mute: 0
@@ -244,7 +244,7 @@ MonoBehaviour:
   rolloff: 0
   minDistance: 2
   maxDistance: 16
-  volume: 0.8
+  volume: 0.5
 --- !u!1 &5095606477950117032
 GameObject:
   m_ObjectHideFlags: 0

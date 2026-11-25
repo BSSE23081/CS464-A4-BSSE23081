@@ -121,7 +121,7 @@ public static partial class CS464Builder
     const string CreditsText =
         "SOUND EFFECTS (sfx_pickup, sfx_hit, sfx_button, sfx_jump, sfx_bounce, sfx_checkpoint, sfx_powerup, sfx_win, sfx_lose)\n" +
         "Synthesised by a script, no samples: Assets/Tools/gen_audio.py (Python + numpy)  |  CC0 / public domain\n\n" +
-        "WORLD SOUNDS (loop_guard_hum, loop_goal_chime, loop_hazard_buzz)\n" +
+        "WORLD SOUNDS (loop_guard_hum, loop_goal_chime)\n" +
         "Synthesised by the same script  |  CC0 / public domain\n\n" +
         "MUSIC (music_theme, a 24-second loop)\n" +
         "Synthesised by the same script  |  CC0 / public domain\n\n" +

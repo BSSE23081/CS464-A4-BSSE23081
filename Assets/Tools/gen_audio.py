@@ -54,16 +54,11 @@ save("sfx_lose", l)
 
 # ---------------------------------------------------------------- world loops (whole cycles, so they loop with no click)
 x = t(2.0)
-hum = (np.sin(2 * np.pi * 90 * x) + 0.6 * np.sin(2 * np.pi * 135 * x) + 0.25 * np.sin(2 * np.pi * 270 * x)) * (0.75 + 0.25 * np.sin(2 * np.pi * 4 * x))
-save("loop_guard_hum", hum, 0.7)
+hum = (np.sin(2 * np.pi * 110 * x) + 0.5 * np.sin(2 * np.pi * 165 * x)) * (0.85 + 0.15 * np.sin(2 * np.pi * 2 * x))   # two soft sines, gentle 2 Hz swell
+save("loop_guard_hum", hum, 0.5)
 x = t(3.0)
 chime = (np.sin(2 * np.pi * 440 * x) + 0.7 * np.sin(2 * np.pi * 660 * x) + 0.3 * np.sin(2 * np.pi * 880 * x)) * (0.65 + 0.35 * np.sin(2 * np.pi * 1 * x))
 save("loop_goal_chime", chime, 0.6)
-x = t(1.0)
-buzz = np.sign(np.sin(2 * np.pi * 60 * x)) * 0.5 + np.sin(2 * np.pi * 120 * x) * 0.5
-k = 6                                                       # circular smoothing, so the loop has no seam
-sm = sum(np.roll(buzz, i) for i in range(k)) / k
-save("loop_hazard_buzz", sm, 0.6)
 
 # ---------------------------------------------------------------- music: Am | F | C | G, 80 bpm, 6 s per chord = 24 s loop
 chords = [((57, 60, 64), 45), ((53, 57, 60), 41), ((48, 52, 55), 36), ((55, 59, 62), 43)]
