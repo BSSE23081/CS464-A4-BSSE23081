@@ -11,6 +11,7 @@ public class PowerUp : MonoBehaviour
     public float duration = 5f;
     [SerializeField] float spin = 90f;
     [SerializeField] float bob = 0.15f;
+    [SerializeField] ParticleSystem pickupEffect;
 
     Vector3 basePosition;
 
@@ -36,6 +37,8 @@ public class PowerUp : MonoBehaviour
             if (other.TryGetComponent(out Health health)) health.shielded = true;
             if (GameManager.Instance != null) GameManager.Instance.ShowMessage("Shield: absorbs the next hit");
         }
+        SfxPlayer.Play(Sfx.PowerUp);
+        if (pickupEffect != null) Instantiate(pickupEffect, transform.position, Quaternion.identity);
         Destroy(gameObject);
     }
 }

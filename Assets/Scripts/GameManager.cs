@@ -38,11 +38,11 @@ public class GameManager : MonoBehaviour
     public TMP_Text loseDetail;
     public GameObject nextButton;
     public TMP_Text nextButtonLabel;
-    public string nextSceneName = "";
+    public GameObject winFirstButton;    // selected when the win screen opens, so Enter works at once
+    public GameObject loseFirstButton;   // selected when the game-over screen opens
 
     enum State { Playing, Won, Lost }
     State state = State.Playing;
-    bool loading;
     public bool PanelOpen => state != State.Playing;
     public bool Won => state == State.Won;
     int score;
@@ -117,15 +117,22 @@ public class GameManager : MonoBehaviour
         else ShowMessage($"The goal needs {coinsRequired - score} more coin(s)", 2f);
     }
 
+    // Lecture 10: a win records the time, opens the next level, and only then shows the screen.
     void Win()
     {
         state = State.Won;
-        string detail = $"Coins: {score} / {totalCoins}\nTime: {FormatTime(elapsed)}\nLives left: {lives}";
+        int level = SceneManager.GetActiveScene().buildIndex;       // Level01 to Level05 are build indices 1 to 5
+        bool best = SaveData.Record(level, elapsed);                // true only if faster than the saved time
+        SaveData.Unlock(level + 1);                                 // one more level opens
+        string bestLine = best ? "NEW BEST TIME!" : (SaveData.HasBest(level) ? "Best: " + SaveData.FormatTime(SaveData.GetBest(level)) : "");
+        string detail = $"Coins: {score} / {totalCoins}\nTime: {FormatTime(elapsed)}\nLives left: {lives}\n{bestLine}";
         SetText(winDetail, detail);
-        if (nextButton != null) nextButton.SetActive(!string.IsNullOrEmpty(nextSceneName));
+        if (nextButtonLabel != null) nextButtonLabel.text = level >= SaveData.LevelCount ? "Credits" : "Next level";
         if (winPanel != null) winPanel.SetActive(true);
         HideMessage();
+        SfxPlayer.Play(Sfx.Win);
         Time.timeScale = 0f;
+        PauseMenu.Select(winFirstButton);
     }
 
     // ---------------------------------------------------------------- lives, respawn, lose
@@ -159,7 +166,9 @@ public class GameManager : MonoBehaviour
         SetText(loseDetail, reason + $"\nCoins: {score} / {totalCoins}");
         if (losePanel != null) losePanel.SetActive(true);
         HideMessage();
+        SfxPlayer.Play(Sfx.Lose);
         Time.timeScale = 0f;
+        PauseMenu.Select(loseFirstButton);
     }
 
     public void SetCheckpoint(Transform point)
@@ -169,49 +178,11 @@ public class GameManager : MonoBehaviour
         ShowMessage("Checkpoint!", 1.5f);
     }
 
-    // ---------------------------------------------------------------- restart and next level
-    public void Restart()
-    {
-        if (loading) return;
-        Debug.Log("Restart: reloading " + SceneManager.GetActiveScene().name);
-        Time.timeScale = 1f;   // first: timeScale survives a scene load
-        Load(SceneManager.GetActiveScene().name);
-    }
-
-    public void NextLevel()
-    {
-        if (loading) return;
-        Debug.Log("Next level: " + (string.IsNullOrEmpty(nextSceneName) ? "(same scene)" : nextSceneName));
-        Time.timeScale = 1f;
-        Load(string.IsNullOrEmpty(nextSceneName) ? SceneManager.GetActiveScene().name : nextSceneName);
-    }
-
-    // Loads by NAME, so it works whatever the scene's build index is. A scene that is not in the Build Profiles
-    // scene list cannot be loaded normally; inside the editor we fall back to loading it straight from its file.
-    void Load(string sceneName)
-    {
-        loading = true;
-        if (Application.CanStreamedLevelBeLoaded(sceneName))
-        {
-            SceneManager.LoadScene(sceneName);
-            return;
-        }
-#if UNITY_EDITOR
-        foreach (string guid in UnityEditor.AssetDatabase.FindAssets(sceneName + " t:Scene"))
-        {
-            string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
-            if (System.IO.Path.GetFileNameWithoutExtension(path) == sceneName)
-            {
-                Debug.LogWarning($"'{sceneName}' is not in the Build Profiles scene list; loading it from {path}. Add all levels to the scene list before you submit.");
-                UnityEditor.SceneManagement.EditorSceneManager.LoadSceneInPlayMode(path, new LoadSceneParameters(LoadSceneMode.Single));
-                return;
-            }
-        }
-#endif
-        Debug.LogError($"Cannot load scene '{sceneName}'. Add it in File > Build Profiles > Scene List.");
-        loading = false;
-        Time.timeScale = 0f;
-    }
+    // ---------------------------------------------------------------- restart, next level, menu
+    // The buttons call these; the LevelLoader does the loading (and puts Time.timeScale back to 1 first).
+    public void Restart() { if (LevelLoader.Instance != null) LevelLoader.Instance.Reload(); }
+    public void NextLevel() { if (LevelLoader.Instance != null) LevelLoader.Instance.LoadNext(); }
+    public void MainMenu() { if (LevelLoader.Instance != null) LevelLoader.Instance.LoadMenu(); }
 
     // ---------------------------------------------------------------- UI (text is set only when it changes)
     public void UpdateUI()
@@ -219,9 +190,7 @@ public class GameManager : MonoBehaviour
         string coinLabel = objective == Objective.CollectCoins ? "Coins" : "Coins (needed)";
         SetText(scoreText, $"{coinLabel}: {score} / {coinsRequired}");
 
-        int hearts = player != null ? Mathf.Max(player.Current, 0) : 0;
-        int maxHearts = player != null ? player.Max : 0;
-        SetText(livesText, $"Lives: {lives}   Health: {hearts} / {maxHearts}");
+        SetText(livesText, $"Lives: {lives}");
 
         switch (objective)
         {
@@ -243,7 +212,7 @@ public class GameManager : MonoBehaviour
         if (timerText == null) return;
         if (timeLimit > 0f) SetSecond("Time", timeLimit - elapsed);
         else if (objective == Objective.Survive) SetSecond("Survive", surviveSeconds - elapsed);
-        else if (timerText.gameObject.activeSelf) timerText.gameObject.SetActive(false);
+        else if (timerText.transform.parent.gameObject.activeSelf) timerText.transform.parent.gameObject.SetActive(false);
     }
 
     void SetSecond(string label, float secondsLeft)
@@ -251,7 +220,7 @@ public class GameManager : MonoBehaviour
         int shown = Mathf.Max(0, Mathf.CeilToInt(secondsLeft));
         if (shown == lastShownSecond) return;      // only when the shown second changes
         lastShownSecond = shown;
-        timerText.gameObject.SetActive(true);
+        timerText.transform.parent.gameObject.SetActive(true);   // the text sits on its own solid panel: show the panel
         timerText.text = $"{label} {shown / 60}:{shown % 60:00}";
     }
 
@@ -264,7 +233,7 @@ public class GameManager : MonoBehaviour
     {
         if (messageText == null || state != State.Playing) return;
         messageText.text = message;
-        messageText.gameObject.SetActive(true);
+        messageText.transform.parent.gameObject.SetActive(true);
         if (messageRoutine != null) StopCoroutine(messageRoutine);
         messageRoutine = StartCoroutine(HideMessageAfter(seconds));
     }
@@ -272,13 +241,13 @@ public class GameManager : MonoBehaviour
     IEnumerator HideMessageAfter(float seconds)
     {
         yield return new WaitForSeconds(seconds);
-        messageText.gameObject.SetActive(false);
+        messageText.transform.parent.gameObject.SetActive(false);
         messageRoutine = null;
     }
 
     void HideMessage()
     {
-        if (messageText != null) messageText.gameObject.SetActive(false);
+        if (messageText != null) messageText.transform.parent.gameObject.SetActive(false);
     }
 
     static string FormatTime(float seconds)

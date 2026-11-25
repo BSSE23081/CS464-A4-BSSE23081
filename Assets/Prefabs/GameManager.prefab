@@ -66,4 +66,5 @@ MonoBehaviour:
   loseDetail: {fileID: 0}
   nextButton: {fileID: 0}
   nextButtonLabel: {fileID: 0}
-  nextSceneName: 
+  winFirstButton: {fileID: 0}
+  loseFirstButton: {fileID: 0}

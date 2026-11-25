@@ -41,6 +41,7 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        if (PauseMenu.IsPaused) return;     // Update still runs at timeScale 0: without this, Space (Resume) would also queue a jump
         Vector2 move = ReadMove();
         input = new Vector3(move.x, 0f, move.y);
         if (JumpPressed()) jumpBufferedUntil = Time.time + jumpBuffer;
@@ -62,6 +63,7 @@ public class PlayerController : MonoBehaviour
             Vector3 v = rb.linearVelocity;
             rb.linearVelocity = new Vector3(v.x, 0f, v.z);   // a clean take-off, whatever the fall speed
             rb.AddForce(Vector3.up * jumpImpulse, ForceMode.Impulse);
+            SfxPlayer.Play(Sfx.Jump);
         }
     }
 

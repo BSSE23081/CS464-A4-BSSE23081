@@ -163,6 +163,7 @@ MonoBehaviour:
   duration: 5
   spin: 90
   bob: 0.15
+  pickupEffect: {fileID: 7545738612521446909, guid: b88a987c3423c3045be13dc1331846e3, type: 3}
 --- !u!1 &8712258246327511097
 GameObject:
   m_ObjectHideFlags: 0

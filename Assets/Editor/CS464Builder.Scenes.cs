@@ -19,7 +19,6 @@ public static partial class CS464Builder
         public float surviveSeconds = 0f;
         public float timeLimit = 0f;
         public int lives = 3;
-        public string next = "";
     }
 
     // The prefabs, loaded once per build.
@@ -38,6 +37,7 @@ public static partial class CS464Builder
         pCrusher = Load("Crusher"); pSweeper = Load("Sweeper"); pBounce = Load("BouncePad"); pGoal = Load("Goal");
         pCheckpoint = Load("Checkpoint"); pSpeed = Load("PowerUp_Speed"); pShield = Load("PowerUp_Shield");
         pKill = Load("KillZone"); pGM = Load("GameManager"); pHud = Load("HUD");
+        pSfx = Load("SfxPlayer"); pMusic = Load("PersistentMusic"); pLoader = Load("LevelLoader");
     }
 
     static GameObject Load(string name)
@@ -75,6 +75,7 @@ public static partial class CS464Builder
     static void BeginScene(Color floor, Color wall)
     {
         EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+        hazardRects.Clear();
         tGeo = Group("Geometry");
         tCoins = Group("Coins");
         tHaz = Group("Hazards");
@@ -82,6 +83,13 @@ public static partial class CS464Builder
         tPick = Group("Pickups");
         tWaypoints = Group("Waypoints");
         tMisc = Group("Misc");
+        // Each level keeps its own hue, but floors and walls are always the DARK value tier, so the player (light),
+        // the pickups (mid-light) and the hazards (mid) stand apart from them in grayscale.
+        float fh, fs, fv, wh, ws, wv;
+        Color.RGBToHSV(floor, out fh, out fs, out fv);
+        Color.RGBToHSV(wall, out wh, out ws, out wv);
+        floor = Palette.Floor(fh * 360f);
+        wall = Palette.Wall(wh * 360f);
         mFloor = M("Floor_" + ColorKey(floor), floor);
         mWall = M("Wall_" + ColorKey(wall), wall);
         startT = null;
@@ -118,9 +126,36 @@ public static partial class CS464Builder
     }
 
     // ---- things to collect and reach
+    // Hazard footprints (x0, x1, z0, z1, floor top, hazard height), so a coin over a hazard can be lifted out of reach of the ground.
+    static readonly System.Collections.Generic.List<float[]> hazardRects = new System.Collections.Generic.List<float[]>();
+
     static void Coin(float x, float z, float top = 0f)
     {
         Inst(pCoin, tCoins, new Vector3(x, top + 0.8f, z));
+    }
+
+    // A coin on a hazard must be reachable only by JUMPING over it. The ball's jump rises 2.15 m (v = 6.5 m/s, g = 9.81), so its centre
+    // can reach y = 2.65 above the floor. To clear a hazard the ball centre must be above (hazard height + 0.5 ball radius); the coin's
+    // trigger reaches 1.1 m (0.6 coin + 0.5 ball). A coin at (hazard height + 1.6) can be collected only from about 0.5 m above the hazard
+    // top and up, never from the ground, and always lies under the jump apex.
+    static void RaiseCoinsOverHazards()
+    {
+        int raised = 0;
+        foreach (Transform c in tCoins)
+        {
+            Vector3 p = c.position;
+            foreach (float[] r in hazardRects)
+            {
+                const float margin = 0.2f;
+                bool inside = p.x > r[0] - margin && p.x < r[1] + margin && p.z > r[2] - margin && p.z < r[3] + margin;
+                if (!inside || Mathf.Abs(p.y - (r[4] + 0.8f)) > 0.05f) continue;   // only coins resting on that floor
+                p.y = r[4] + r[5] + 1.6f;
+                c.position = p;
+                raised++;
+                break;
+            }
+        }
+        if (raised > 0) Debug.Log("CS464 builder: lifted " + raised + " coin(s) above hazards so they are collected by jumping over them.");
     }
 
     static void Boost(float x, float z, float top = 0f) { Inst(pSpeed, tPick, new Vector3(x, top + 0.9f, z)); }
@@ -133,6 +168,7 @@ public static partial class CS464Builder
     static void Spikes(float x0, float x1, float z0, float z1, float top = 0f)
     {
         float w = x1 - x0, d = z1 - z0;
+        hazardRects.Add(new[] { x0, x1, z0, z1, top, 0.8f });
         GameObject go = InstUnpacked(pSpikes, tHaz, new Vector3((x0 + x1) * 0.5f, top, (z0 + z1) * 0.5f));
         go.name = "Spikes";
         BoxCollider bc = go.GetComponent<BoxCollider>();
@@ -142,7 +178,7 @@ public static partial class CS464Builder
         b.localScale = new Vector3(w, 0.15f, d);
         b.localPosition = new Vector3(0f, 0.075f, 0f);
 
-        Material tooth = M("SpikeTooth", new Color(0.95f, 0.25f, 0.18f), 0.3f);
+        Material tooth = M("SpikeTooth", Palette.Hazard);
         for (float x = -w * 0.5f + 0.4f; x <= w * 0.5f - 0.2f; x += 0.8f)
         {
             for (float z = -d * 0.5f + 0.4f; z <= d * 0.5f - 0.2f; z += 0.8f)
@@ -155,6 +191,7 @@ public static partial class CS464Builder
 
     static void Crusher(float cx, float cz, float w, float d, float rest, float warn, float strike, float delay, float top = 0f)
     {
+        hazardRects.Add(new[] { cx - w * 0.5f, cx + w * 0.5f, cz - d * 0.5f, cz + d * 0.5f, top, 1.4f });
         GameObject go = InstUnpacked(pCrusher, tHaz, new Vector3(cx, top, cz));
         go.name = "Crusher";
         BoxCollider bc = go.GetComponent<BoxCollider>();
@@ -177,6 +214,8 @@ public static partial class CS464Builder
 
     static void Sweeper(float cx, float cz, float sizeX, float sizeZ, Vector3 axis, float distance, float speed, float top = 0f)
     {
+        float sx = sizeX * 0.5f + Mathf.Abs(axis.normalized.x) * distance, sz = sizeZ * 0.5f + Mathf.Abs(axis.normalized.z) * distance;
+        hazardRects.Add(new[] { cx - sx, cx + sx, cz - sz, cz + sz, top, 1.2f });
         GameObject go = InstUnpacked(pSweeper, tHaz, new Vector3(cx, top, cz));
         go.name = "Sweeper";
         BoxCollider bc = go.GetComponent<BoxCollider>();
@@ -236,9 +275,23 @@ public static partial class CS464Builder
         kz.name = "KillZone";
         kz.GetComponent<BoxCollider>().size = new Vector3(400f, 2f, 400f);
 
-        // Camera.
+        RaiseCoinsOverHazards();
+
+        // Camera: follows the player and shakes on a hit (listener 5). Its AudioListener is removed:
+        // the follow camera is about 14 m from the ball, so the scene's one listener sits on the player instead.
         Camera cam = Object.FindFirstObjectByType<Camera>();
-        if (cam != null && cam.GetComponent<CameraFollow>() == null) cam.gameObject.AddComponent<CameraFollow>();
+        if (cam != null)
+        {
+            if (cam.GetComponent<CameraFollow>() == null) cam.gameObject.AddComponent<CameraFollow>();
+            if (cam.GetComponent<CameraShake>() == null) cam.gameObject.AddComponent<CameraShake>();
+            AudioListener old = cam.GetComponent<AudioListener>();
+            if (old != null) Object.DestroyImmediate(old);
+        }
+        GameObject ear = new GameObject("AudioListener", typeof(AudioListener), typeof(ListenerOnPlayer));
+        SetProp(ear.GetComponent<ListenerOnPlayer>(), "player", playerGo.transform);
+
+        // Audio and loading: one SfxPlayer, one music player (each destroys itself if one already exists), one LevelLoader.
+        AddSceneBasics();
 
         // GameManager.
         GameObject gmGo = Inst(pGM, null, Vector3.zero);
@@ -250,37 +303,28 @@ public static partial class CS464Builder
         gm.levelTitle = cfg.title;
         gm.intro = cfg.intro;
         gm.lives = cfg.lives;
-        gm.nextSceneName = cfg.next;
         gm.player = playerGo.GetComponent<Health>();
         gm.respawnPoint = startT;
 
         // HUD and references.
         GameObject hud = Inst(pHud, null, Vector3.zero);
-        gm.scoreText = hud.transform.Find("ScoreText").GetComponent<TMP_Text>();
-        gm.objectiveText = hud.transform.Find("ObjectiveText").GetComponent<TMP_Text>();
-        gm.livesText = hud.transform.Find("LivesText").GetComponent<TMP_Text>();
-        gm.timerText = hud.transform.Find("TimerText").GetComponent<TMP_Text>();
-        gm.messageText = hud.transform.Find("MessageText").GetComponent<TMP_Text>();
+        gm.scoreText = hud.transform.Find("ScorePanel/ScoreText").GetComponent<TMP_Text>();
+        gm.objectiveText = hud.transform.Find("ObjectivePanel/ObjectiveText").GetComponent<TMP_Text>();
+        gm.livesText = hud.transform.Find("HealthPanel/LivesText").GetComponent<TMP_Text>();
+        gm.timerText = hud.transform.Find("TimerPanel/TimerText").GetComponent<TMP_Text>();
+        gm.messageText = hud.transform.Find("MessagePanel/MessageText").GetComponent<TMP_Text>();
         gm.winPanel = hud.transform.Find("WinPanel").gameObject;
         gm.losePanel = hud.transform.Find("LosePanel").gameObject;
-        gm.winDetail = hud.transform.Find("WinPanel/Detail").GetComponent<TMP_Text>();
-        gm.loseDetail = hud.transform.Find("LosePanel/Detail").GetComponent<TMP_Text>();
-        gm.nextButton = hud.transform.Find("WinPanel/NextButton").gameObject;
-        gm.nextButtonLabel = hud.transform.Find("WinPanel/NextButton/Label").GetComponent<TMP_Text>();
-        gm.nextButtonLabel.text = cfg.next == "Level01" ? "Play again (Enter)" : "Next Level (Enter)";
+        gm.winDetail = hud.transform.Find("WinPanel/Card/Detail").GetComponent<TMP_Text>();
+        gm.loseDetail = hud.transform.Find("LosePanel/Card/Detail").GetComponent<TMP_Text>();
+        gm.nextButton = hud.transform.Find("WinPanel/Card/NextButton").gameObject;
+        gm.nextButtonLabel = hud.transform.Find("WinPanel/Card/NextButton/Label").GetComponent<TMP_Text>();
+        gm.winFirstButton = gm.nextButton;
+        gm.loseFirstButton = hud.transform.Find("LosePanel/Card/RestartButton").gameObject;
         Rec(gm);
-        Rec(gm.nextButtonLabel);
 
-        // EventSystem, so the Restart and Next buttons can be clicked.
-        GameObject es = new GameObject("EventSystem", typeof(EventSystem));
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
-        // New Input System only: the UI module needs its default actions assigned, or clicks do nothing.
-        Component module = es.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
-        System.Reflection.MethodInfo assign = module.GetType().GetMethod("AssignDefaultActions");
-        if (assign != null) assign.Invoke(module, null);
-#else
-        es.AddComponent<StandaloneInputModule>();
-#endif
+        // EventSystem, so the buttons can be clicked (the HUD's EventSystemGuard double-checks it at run time).
+        AddEventSystem();
 
         string path = SceneDir + "/" + sceneName + ".unity";
         EditorSceneManager.SaveScene(SceneManager.GetActiveScene(), path);

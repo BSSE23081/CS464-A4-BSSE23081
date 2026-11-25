@@ -15,5 +15,6 @@ public class BouncePad : MonoBehaviour
         Vector3 v = body.linearVelocity;
         body.linearVelocity = new Vector3(v.x, 0f, v.z);   // a fall would otherwise eat into the launch
         body.AddForce(Vector3.up * launchSpeed, ForceMode.VelocityChange);   // push the player UP: steering rewrites sideways speed
+        SfxPlayer.Play(Sfx.Bounce);
     }
 }

@@ -18,8 +18,8 @@ public static partial class CS464Builder
             return;
         }
         if (!EditorUtility.DisplayDialog("CS464",
-                "This (re)creates Assets/Prefabs, Assets/Materials and the scenes Level01 to Level05 and Lecture07_Arena in Assets/Scenes.\n\n" +
-                "If your Assignment 02 scenes use the same names they are replaced. Commit first: git can bring them back.",
+                "This (re)creates Assets/Prefabs, Assets/Materials and the scenes MainMenu, Level01 to Level05 and Credits in Assets/Scenes, " +
+                "and sets the Build Profiles scene list.\n\nCommit first: git can bring anything back.",
                 "Build", "Cancel"))
             return;
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
@@ -29,23 +29,53 @@ public static partial class CS464Builder
         AssetDatabase.Refresh();
         LoadPrefabs();
 
+        BuildMainMenuScene();
         Level01();
         Level02();
         Level03();
         Level04();
         Level05();
-        Arena();
+        BuildCreditsScene();
 
-        string[] names = { "Level01", "Level02", "Level03", "Level04", "Level05", "Lecture07_Arena" };
+        // The play order IS the build index order: MainMenu 0, Level01 to Level05 = 1 to 5, Credits 6.
+        string[] names = { "MainMenu", "Level01", "Level02", "Level03", "Level04", "Level05", "Credits" };
         EditorBuildSettingsScene[] scenes = new EditorBuildSettingsScene[names.Length];
         for (int i = 0; i < names.Length; i++)
             scenes[i] = new EditorBuildSettingsScene(SceneDir + "/" + names[i] + ".unity", true);
         EditorBuildSettings.scenes = scenes;
 
+        PaletteReport();
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        EditorSceneManager.OpenScene(SceneDir + "/Level01.unity");
-        EditorUtility.DisplayDialog("CS464", "Done. Level01 to Level05 and Lecture07_Arena are built and in the Build Profiles scene list.\n\nOpen any scene and press Play.", "OK");
+        EditorSceneManager.OpenScene(SceneDir + "/MainMenu.unity");
+        EditorUtility.DisplayDialog("CS464", "Done. MainMenu, Level01 to Level05 and Credits are built and in the Build Profiles scene list.\n\nOpen MainMenu and press Play. The Console has the palette's measured contrast ratios.", "OK");
+    }
+
+    [MenuItem("CS464/Print Palette Report")]
+    public static void PaletteReport()
+    {
+        string r = "CS464 palette (base hue " + Palette.BaseHue + ", triadic: " + Palette.HazardHue + " and " + Palette.PickupHue + ")\n";
+        r += Row("HUD text on panel", Palette.Text, Palette.Panel);
+        r += Row("Score (pickup green) on panel", Palette.Pickup, Palette.Panel);
+        r += Row("Button label (panel) on button", Palette.Panel, Palette.Button);
+        r += Row("Button label on highlighted", Palette.Panel, Palette.ButtonHighlighted);
+        r += Row("Button label on selected", Palette.Panel, Palette.ButtonSelected);
+        r += Row("Button label on pressed", Palette.Panel, Palette.ButtonPressed);
+        r += Row("Game-over title (hazard) on panel [large text, 3:1]", Palette.Hazard, Palette.Panel);
+        r += "Value tiers (relative luminance): panel " + ColourUtil.RelativeLuminance(Palette.Panel).ToString("0.000") +
+             ", hazard " + ColourUtil.RelativeLuminance(Palette.Hazard).ToString("0.000") +
+             ", pickup " + ColourUtil.RelativeLuminance(Palette.Pickup).ToString("0.000") +
+             ", player " + ColourUtil.RelativeLuminance(Palette.Player).ToString("0.000") + "\n";
+        r += Row("player vs pickup", Palette.Player, Palette.Pickup);
+        r += Row("pickup vs hazard", Palette.Pickup, Palette.Hazard);
+        r += Row("hazard vs a floor (hue 215)", Palette.Hazard, Palette.Floor(215f));
+        r += Row("player vs a floor (hue 215)", Palette.Player, Palette.Floor(215f));
+        Debug.Log(r);
+    }
+
+    static string Row(string what, Color a, Color b)
+    {
+        return what.PadRight(58) + ColourUtil.Contrast(a, b).ToString("0.00") + " : 1\n";
     }
 
     // =====================================================================================
@@ -61,7 +91,7 @@ public static partial class CS464Builder
         Wall(10, 11, -11, 10);
         Wall(-10, 10, -11, -10);
         Floor(-4, 4, 12, 18, 3f);              // the ledge, 3 m up
-        Bounce(0, 7);                          // the green pad: VelocityChange, 9 m/s up
+        Bounce(0, 7);                          // the bouncy pad: VelocityChange, 9 m/s up
 
         Coin(-6, -4); Coin(6, -4); Coin(0, 0); Coin(-5, 4); Coin(5, 4);
         Coin(-2, 15, 3f); Coin(0, 15, 3f); Coin(2, 15, 3f);
@@ -70,11 +100,10 @@ public static partial class CS464Builder
         Finish("Level01", new Config
         {
             title = "Level 1",
-            intro = "Level 1 - First Steps\nCollect all 8 coins. Space jumps. Run onto the green pad and keep going forward to reach the high ledge.",
+            intro = "Level 1 - First Steps\nCollect all 8 coins. Space jumps. Run onto the bouncy pad and keep going forward to reach the high ledge.",
             objective = Objective.CollectCoins,
             coinsRequired = 8,
-            lives = 5,
-            next = "Level02"
+            lives = 5
         }, 0f, 4f);
     }
 
@@ -108,12 +137,11 @@ public static partial class CS464Builder
         Finish("Level02", new Config
         {
             title = "Level 2",
-            intro = "Level 2 - Beat the Clock\nGrab 4 coins and reach the green goal before the timer ends. Spikes cost a heart: use the safe lanes.",
+            intro = "Level 2 - Beat the Clock\nGrab 4 coins and reach the glowing goal before the timer ends. Spikes cost a heart: use the safe lanes.",
             objective = Objective.ReachGoal,
             coinsRequired = 4,
             timeLimit = 50f,
-            lives = 4,
-            next = "Level03"
+            lives = 4
         }, 8f, 20f);
     }
 
@@ -156,8 +184,7 @@ public static partial class CS464Builder
             intro = "Level 3 - Hunted\nCollect all 10 coins. Guards chase when you get close and give up when you get far. Mind the pit and the spikes.",
             objective = Objective.CollectCoins,
             coinsRequired = 10,
-            lives = 3,
-            next = "Level04"
+            lives = 3
         }, 0f, 16f);
     }
 
@@ -191,11 +218,10 @@ public static partial class CS464Builder
         Finish("Level04", new Config
         {
             title = "Level 4",
-            intro = "Level 4 - Crusher Gauntlet\nA crusher flashes red before it strikes: wait, then run. Collect 5 coins and reach the goal.",
+            intro = "Level 4 - Crusher Gauntlet\nA crusher flashes before it strikes: wait, then run. Collect 5 coins and reach the goal.",
             objective = Objective.ReachGoal,
             coinsRequired = 5,
-            lives = 3,
-            next = "Level05"
+            lives = 3
         }, 0f, 22f);
     }
 
@@ -245,56 +271,11 @@ public static partial class CS464Builder
         Finish("Level05", new Config
         {
             title = "Level 5",
-            intro = "Level 5 - Last Stand\nCollect 8 coins and survive 60 seconds. Cyan orbs give a speed boost: grab a second one to restart the clock.",
+            intro = "Level 5 - Last Stand\nCollect 8 coins and survive 60 seconds. Orbs with a bolt give a speed boost: grab a second one to restart the clock.",
             objective = Objective.Survive,
             coinsRequired = 8,
             surviveSeconds = 60f,
-            lives = 3,
-            next = "Level01"
-        }, 0f, 0f);
-    }
-
-    // =====================================================================================
-    // THE LECTURE 07 ARENA, recreated.  Two patrolling guards (loop and ping-pong), spikes,
-    // a crusher with a coin on it, a speed pickup and a shield, hearts, lives, a lose screen. Win at 10 coins.
-    // =====================================================================================
-    static void Arena()
-    {
-        BeginScene(new Color(0.42f, 0.44f, 0.48f), new Color(0.22f, 0.24f, 0.28f));
-        Floor(-12, 12, -12, 12);
-        Wall(-13, -12, -13, 13);
-        Wall(12, 13, -13, 13);
-        Wall(-12, 12, -13, -12);
-        Wall(-12, 12, 12, 13);
-
-        Spikes(-4, 4, -1, 1);
-        Spikes(-10, -7, 6, 9);
-        Spikes(7, 10, -9, -6);
-        Crusher(0, -8, 4, 3, 2.4f, 0.7f, 0.4f, 0f);
-
-        Coin(-9, 0); Coin(9, 0); Coin(0, 6); Coin(-6, -6); Coin(6, 6);
-        Coin(-6, 4); Coin(6, -3);
-        Coin(0, -8);                       // on the crusher
-        Coin(-8.5f, 7.5f);                 // on a spike patch
-        Coin(8.5f, -7.5f);                 // on a spike patch
-
-        Guard("GuardLoop", PatrolMode.Loop, 2.6f, 3.5f, 6f, 9f, false, 0f, 0f,
-            new Vector2(-8, -4), new Vector2(8, -4), new Vector2(8, 4), new Vector2(-8, 4));
-        Guard("GuardPingPong", PatrolMode.PingPong, 2.2f, 3.5f, 6f, 9f, false, 0f, 0f,
-            new Vector2(-10, 9.5f), new Vector2(0, 9.5f), new Vector2(10, 9.5f));
-
-        Boost(-9, -9);
-        Shield(9, 9);
-
-        StartAt(0, -11);
-        Finish("Lecture07_Arena", new Config
-        {
-            title = "Arena",
-            intro = "Lecture 07 arena\nCollect 10 coins. Spikes, a crusher and two guards fight back. Cyan = speed, blue = shield.",
-            objective = Objective.CollectCoins,
-            coinsRequired = 10,
-            lives = 3,
-            next = "Level01"
+            lives = 3
         }, 0f, 0f);
     }
 }

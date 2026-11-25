@@ -1,9 +1,6 @@
 using TMPro;
 using UnityEditor;
-using UnityEditor.Events;
 using UnityEngine;
-using UnityEngine.Events;
-using UnityEngine.UI;
 
 // Builds the materials and prefabs: Player, Coin, Guard, Spikes, Crusher, Sweeper, BouncePad,
 // Goal, Checkpoint, PowerUps, KillZone, GameManager and the HUD. Run from the CS464 menu.
@@ -97,22 +94,29 @@ public static partial class CS464Builder
         EnsureFolder("Assets", "Prefabs");
         EnsureFolder("Assets", "Scenes");
         EnsureFolder("Assets", "Materials");
+        EnsureAudio();           // the mixer and the clips first: prefabs point at them
+        BuildEffects();          // PickupBurst and PowerUpBurst, Stop Action = Destroy
+        BuildAudioPrefabs();     // SfxPlayer and PersistentMusic
+        BuildLoader();           // LevelLoader with its loading bar
+        ParticleSystem pickupFx = Prefab<ParticleSystem>("PickupBurst");
+        ParticleSystem powerFx = Prefab<ParticleSystem>("PowerUpBurst");
 
-        Material player = M("Player", new Color(0.10f, 0.75f, 0.70f));
-        Material coin = M("Coin", new Color(1.00f, 0.82f, 0.10f), 0.5f);
-        Material guard = M("Guard", new Color(1.00f, 0.45f, 0.10f));
-        Material guardEye = M("GuardEye", new Color(1f, 1f, 1f));
-        Material spikeBase = M("SpikeBase", new Color(0.35f, 0.08f, 0.08f));
-        Material crusherBase = M("CrusherBase", new Color(0.22f, 0.18f, 0.18f));
-        Material warning = M("Warning", new Color(1.00f, 0.15f, 0.10f), 0.8f);
-        Material slab = M("CrusherSlab", new Color(0.75f, 0.10f, 0.10f));
-        Material sweeper = M("Sweeper", new Color(0.95f, 0.35f, 0.10f));
-        Material bounce = M("BouncePad", new Color(0.30f, 0.90f, 0.40f), 0.5f);
-        Material goal = M("Goal", new Color(0.20f, 1.00f, 0.50f), 0.7f);
-        Material pole = M("CheckpointPole", new Color(0.7f, 0.7f, 0.7f));
-        Material flag = M("CheckpointFlag", new Color(1.0f, 0.85f, 0.2f), 0.3f);
-        Material speedMat = M("PowerSpeed", new Color(0.20f, 0.90f, 1.00f), 0.8f);
-        Material shieldMat = M("PowerShield", new Color(0.30f, 0.50f, 1.00f), 0.8f);
+        // Every colour comes from Palette: indigo base, orange-red for danger, green for pickups, split by VALUE.
+        Material player = M("Player", Palette.Player);
+        Material coin = M("Coin", Palette.Pickup, 0.15f);
+        Material guard = M("Guard", Palette.Hazard);
+        Material guardEye = M("GuardEye", Palette.Text);
+        Material spikeBase = M("SpikeBase", Palette.Panel);
+        Material crusherBase = M("CrusherBase", ColourUtil.Hsv(Palette.BaseHue, 0.30f, 0.22f));
+        Material warning = M("Warning", Palette.Text, 0.6f);
+        Material slab = M("CrusherSlab", Palette.Hazard);
+        Material sweeper = M("Sweeper", Palette.Hazard);
+        Material bounce = M("BouncePad", Palette.Button, 0.2f);
+        Material goal = M("Goal", Palette.Pickup, 0.3f);
+        Material pole = M("CheckpointPole", Palette.Text);
+        Material flag = M("CheckpointFlag", Palette.Button, 0.2f);
+        Material speedMat = M("PowerSpeed", Palette.Pickup, 0.3f);
+        Material shieldMat = M("PowerShield", Palette.Button, 0.3f);
 
         // Player: tagged Player, a non-kinematic Rigidbody (what makes triggers fire), controller and Health.
         {
@@ -124,6 +128,11 @@ public static partial class CS464Builder
             rb.interpolation = RigidbodyInterpolation.Interpolate;   // a free-rolling ball: rotation is not frozen
             go.AddComponent<PlayerController>();
             go.AddComponent<Health>();
+            // Two of the five Health listeners live here: a hit you can hear, and a hit you can see.
+            go.AddComponent<DamageSfx>();
+            HitSparks hs = go.AddComponent<HitSparks>();
+            ParticleSystem sparks = MakeParticles("HitSparks", go.transform, Palette.Text, 22, 0.5f, 5f, 0.2f, false, false);
+            SetProp(hs, "sparks", sparks);
             SavePrefab(go, "Player");
         }
 
@@ -132,7 +141,8 @@ public static partial class CS464Builder
             GameObject go = new GameObject("Coin");
             SphereCollider sc = Trigger<SphereCollider>(go);
             sc.radius = 0.6f;
-            go.AddComponent<Coin>();
+            Coin cn = go.AddComponent<Coin>();
+            SetProp(cn, "pickupEffect", pickupFx);
             GameObject vis = Prim(PrimitiveType.Cylinder, "Visual", go.transform, Vector3.zero, new Vector3(0.7f, 0.06f, 0.7f), coin, false);
             vis.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);   // a disc standing on its edge, so the spin shows
             SavePrefab(go, "Coin");
@@ -151,6 +161,9 @@ public static partial class CS464Builder
             h.damage = 1;
             h.knockback = 8f;
             go.AddComponent<EnemyGuard>();
+            // 3D sound 1: a hum you can hear coming. Logarithmic (-6 dB per doubling), full volume inside 2 m, cut at 16 m
+            // (the guard notices you at 5 to 7 m and gives up at 8 to 10 m, so you hear it before it hears you).
+            AddWorldSound(go, "loop_guard_hum", 0, 2f, 16f, 0.8f);
             Prim(PrimitiveType.Capsule, "Body", go.transform, Vector3.zero, new Vector3(1.1f, 1f, 1.1f), guard, false);
             Prim(PrimitiveType.Cube, "Eyes", go.transform, new Vector3(0f, 0.45f, 0.5f), new Vector3(0.7f, 0.18f, 0.2f), guardEye, false);
             SavePrefab(go, "Guard");
@@ -180,6 +193,7 @@ public static partial class CS464Builder
             h.restTime = 2.4f;
             h.warnTime = 0.7f;
             h.strikeTime = 0.4f;
+            AddWorldSound(go, "loop_hazard_buzz", 0, 2f, 12f, 0.6f);   // 3D sound 3: you hear a crusher before you see its warning
             Prim(PrimitiveType.Cube, "Base", go.transform, new Vector3(0f, 0.06f, 0f), new Vector3(4f, 0.12f, 3f), crusherBase, false);
             GameObject w = Prim(PrimitiveType.Cube, "Warning", go.transform, new Vector3(0f, 0.09f, 0f), new Vector3(3.8f, 0.14f, 2.8f), warning, false);
             GameObject s = Prim(PrimitiveType.Cube, "Slab", go.transform, new Vector3(0f, 0.7f, 0f), new Vector3(4f, 1.4f, 3f), slab, false);
@@ -224,6 +238,9 @@ public static partial class CS464Builder
             bc.size = new Vector3(3f, 3f, 3f);
             bc.center = new Vector3(0f, 1.5f, 0f);
             go.AddComponent<Goal>();
+            // 3D sound 2: a chime you can follow across the level. Linear: it falls in a straight line to silence at 35 m,
+            // so the goal is heard from about half-way along a 30 m route but never from the next room's far end.
+            AddWorldSound(go, "loop_goal_chime", 1, 3f, 35f, 0.7f);
             Prim(PrimitiveType.Cylinder, "Pad", go.transform, new Vector3(0f, 0.05f, 0f), new Vector3(3f, 0.05f, 3f), goal, false);
             Prim(PrimitiveType.Cube, "Beacon", go.transform, new Vector3(0f, 1.6f, 0f), new Vector3(0.6f, 3f, 0.6f), goal, false);
             SavePrefab(go, "Goal");
@@ -253,6 +270,7 @@ public static partial class CS464Builder
             pu.type = PowerUpType.Speed;
             pu.multiplier = 1.6f;
             pu.duration = 5f;
+            SetProp(pu, "pickupEffect", powerFx);
             Prim(PrimitiveType.Sphere, "Orb", go.transform, Vector3.zero, Vector3.one * 0.7f, speedMat, false);
             Prim(PrimitiveType.Cube, "Bolt", go.transform, Vector3.zero, new Vector3(0.15f, 1.1f, 0.15f), speedMat, false).transform.localRotation = Quaternion.Euler(0f, 0f, 25f);
             SavePrefab(go, "PowerUp_Speed");
@@ -263,6 +281,7 @@ public static partial class CS464Builder
             sc.radius = 0.8f;
             PowerUp pu = go.AddComponent<PowerUp>();
             pu.type = PowerUpType.Shield;
+            SetProp(pu, "pickupEffect", powerFx);
             Prim(PrimitiveType.Sphere, "Orb", go.transform, Vector3.zero, Vector3.one * 0.8f, shieldMat, false);
             SavePrefab(go, "PowerUp_Shield");
         }
@@ -284,106 +303,5 @@ public static partial class CS464Builder
         }
 
         BuildHud();
-    }
-
-    // ------------------------------------------------------------------ the HUD
-    static TextMeshProUGUI Txt(Transform parent, string name, string text, float size, TextAlignmentOptions align,
-        Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 pos, Vector2 sizeDelta, Color color)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        TextMeshProUGUI t = go.AddComponent<TextMeshProUGUI>();
-        t.font = TMP_Settings.defaultFontAsset;
-        t.text = text;
-        t.fontSize = size;
-        t.alignment = align;
-        t.color = color;
-        t.raycastTarget = false;
-        RectTransform rt = t.rectTransform;
-        rt.anchorMin = anchorMin;
-        rt.anchorMax = anchorMax;
-        rt.pivot = pivot;
-        rt.anchoredPosition = pos;
-        rt.sizeDelta = sizeDelta;
-        return t;
-    }
-
-    static GameObject Btn(Transform parent, string name, string label, Vector2 pos, Vector2 size, Color color, UnityAction onClick, out TextMeshProUGUI labelText)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
-        go.transform.SetParent(parent, false);
-        go.GetComponent<Image>().color = color;
-        RectTransform rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = pos;
-        rt.sizeDelta = size;
-        labelText = Txt(go.transform, "Label", label, 34f, TextAlignmentOptions.Center,
-            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, Color.white);
-        UnityEventTools.AddPersistentListener(go.GetComponent<Button>().onClick, onClick);
-        return go;
-    }
-
-    static GameObject Panel(Transform parent, string name)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
-        go.transform.SetParent(parent, false);
-        go.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.78f);
-        RectTransform rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
-        return go;
-    }
-
-    static void BuildHud()
-    {
-        GameObject root = new GameObject("HUD", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        Canvas canvas = root.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        CanvasScaler scaler = root.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
-        UIActions actions = root.AddComponent<UIActions>();
-        Transform t = root.transform;
-
-        Color white = Color.white;
-        Color soft = new Color(1f, 1f, 1f, 0.85f);
-        Vector2 tl = new Vector2(0f, 1f);
-        Vector2 tr = new Vector2(1f, 1f);
-        Vector2 tc = new Vector2(0.5f, 1f);
-        Vector2 bc = new Vector2(0.5f, 0f);
-
-        Txt(t, "ScoreText", "Coins: 0", 40f, TextAlignmentOptions.TopLeft, tl, tl, tl, new Vector2(24f, -20f), new Vector2(700f, 56f), white);
-        Txt(t, "ObjectiveText", "", 28f, TextAlignmentOptions.TopLeft, tl, tl, tl, new Vector2(24f, -76f), new Vector2(1100f, 44f), soft);
-        Txt(t, "LivesText", "Lives: 3", 40f, TextAlignmentOptions.TopRight, tr, tr, tr, new Vector2(-24f, -20f), new Vector2(800f, 56f), white);
-        Txt(t, "TimerText", "", 52f, TextAlignmentOptions.Top, tc, tc, tc, new Vector2(0f, -16f), new Vector2(500f, 70f), new Color(1f, 0.92f, 0.5f));
-        Txt(t, "MessageText", "", 36f, TextAlignmentOptions.Bottom, bc, bc, bc, new Vector2(0f, 110f), new Vector2(1500f, 130f), white);
-
-        // Win panel
-        GameObject win = Panel(t, "WinPanel");
-        Txt(win.transform, "Title", "LEVEL COMPLETE", 90f, TextAlignmentOptions.Center,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 230f), new Vector2(1400f, 120f), new Color(0.4f, 1f, 0.6f));
-        Txt(win.transform, "Detail", "", 44f, TextAlignmentOptions.Center,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 70f), new Vector2(1000f, 220f), white);
-        TextMeshProUGUI l1;
-        Btn(win.transform, "RestartButton", "Restart (R)", new Vector2(-230f, -150f), new Vector2(400f, 100f), new Color(0.25f, 0.3f, 0.4f), actions.Restart, out l1);
-        TextMeshProUGUI l2;
-        Btn(win.transform, "NextButton", "Next Level (Enter)", new Vector2(230f, -150f), new Vector2(400f, 100f), new Color(0.15f, 0.6f, 0.4f), actions.NextLevel, out l2);
-        win.SetActive(false);
-
-        // Lose panel
-        GameObject lose = Panel(t, "LosePanel");
-        Txt(lose.transform, "Title", "GAME OVER", 100f, TextAlignmentOptions.Center,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 230f), new Vector2(1400f, 130f), new Color(1f, 0.4f, 0.35f));
-        Txt(lose.transform, "Detail", "", 44f, TextAlignmentOptions.Center,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 70f), new Vector2(1000f, 200f), white);
-        TextMeshProUGUI l3;
-        Btn(lose.transform, "RestartButton", "Restart (R)", new Vector2(0f, -150f), new Vector2(400f, 100f), new Color(0.6f, 0.2f, 0.2f), actions.Restart, out l3);
-        lose.SetActive(false);
-
-        SavePrefab(root, "HUD");
     }
 }
